@@ -1,0 +1,15 @@
+name: Keepalive Ping
+on:
+  schedule:
+    # Roda a cada 10 minutos
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Application
+        run: |
+          # O Github Actions usa o Secret KEEPALIVE_URL
+          curl -sS ${{ secrets.KEEPALIVE_URL }} > /dev/null || echo "Ping falhou, mas a action continua"
