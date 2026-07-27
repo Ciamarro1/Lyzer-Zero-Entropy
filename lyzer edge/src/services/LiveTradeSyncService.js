@@ -242,42 +242,7 @@ class LiveTradeSyncService {
       }
     }
 
-    if (data.liveExecution) {
-      const exec = data.liveExecution;
-      try {
-        const lastTrade = await db.trades.orderBy('id').last();
-        const nextId = lastTrade ? lastTrade.id + 1 : 1;
-
-        const tradeDoc = {
-          id: nextId,
-          backendId: exec.id || `trade_${Date.now()}`,
-          symbol: exec.symbol.replace('USDT', '/USD'),
-          asset: 'Crypto',
-          market: 'Spot (Testnet)',
-          status: TRADE_STATUS.OPEN,
-          direction: exec.side === 'BUY' ? 'LONG' : 'SHORT',
-          entryDate: new Date().toISOString(),
-          exitDate: null,
-          entryPrice: exec.price,
-          exitPrice: null,
-          result: null,
-          pnl: 0,
-        };
-
-        await db.transaction('rw', [db.trades, db.marketContext], async () => {
-          await db.trades.add(tradeDoc);
-          await db.marketContext.add({
-            tradeId: nextId,
-            session: 'new_york',
-            marketState: 'live_testnet'
-          });
-        });
-
-        console.log(`[LiveTradeSync] Execução Registrada no DB Local: ${tradeDoc.symbol} ${tradeDoc.direction}`);
-      } catch (err) {
-        console.error('[LiveTradeSync] Falha ao gravar trade no IndexedDB:', err);
-      }
-    }
+    // data.liveExecution handled by ExecutionTerminal.js, ignored here to prevent duplicate trade entries.
   }
 }
 
