@@ -1107,6 +1107,52 @@ canvas.ltv-chart {
         }
       }
 
+      // Add Trade Markers for history
+      const markers = [];
+      const historyTrades = (state.trades[symbol] || []);
+      for (const t of historyTrades) {
+        if (t.entryPrice && (t.timestamp || t.entryDate)) {
+          let time = t.timestamp || new Date(t.entryDate).getTime();
+          if (time > 2000000000) time = Math.floor(time / 1000);
+          
+          markers.push({
+            time: time,
+            position: t.direction === 'LONG' ? 'belowBar' : 'aboveBar',
+            color: t.direction === 'LONG' ? '#38bdf8' : '#fb923c',
+            shape: t.direction === 'LONG' ? 'arrowUp' : 'arrowDown',
+            text: `[ENTRY] ${t.tradeDna || t.direction}\n${(t.signal?.reasons || []).join(', ')}`
+          });
+        }
+        if (t.status === 'closed' && t.exitPrice && (t.exitDate || t.timestamp)) {
+          let exitTime = t.exitDate ? new Date(t.exitDate).getTime() : (t.timestamp + 3600000); // fallback
+          if (exitTime > 2000000000) exitTime = Math.floor(exitTime / 1000);
+
+          markers.push({
+            time: exitTime,
+            position: t.direction === 'LONG' ? 'aboveBar' : 'belowBar',
+            color: t.pnl > 0 ? '#10b981' : '#ef4444',
+            shape: t.direction === 'LONG' ? 'arrowDown' : 'arrowUp',
+            text: `[EXIT] PnL: ${t.pnl !== undefined ? (t.pnl * 100).toFixed(2) : '?'}%\n${(t.reasonCodes || []).join(', ')}`
+          });
+        }
+      }
+      
+      // Sort markers by time and remove duplicates
+      markers.sort((a, b) => a.time - b.time);
+      const uniqueMarkers = [];
+      const seenMarkers = new Set();
+      for (const m of markers) {
+        const key = `${m.time}-${m.shape}`;
+        if (!seenMarkers.has(key)) {
+          seenMarkers.add(key);
+          uniqueMarkers.push(m);
+        }
+      }
+      
+      if (uniqueMarkers.length > 0) {
+        series.setMarkers(uniqueMarkers);
+      }
+
       this._lwcChart = chart;
       this._lwcSeries = series;
 

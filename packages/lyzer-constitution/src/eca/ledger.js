@@ -1,77 +1,125 @@
-/**
- * @fileoverview ECA Court Ledger (Deliverable O)
- * Implements an append-only, tamper-proof audit log for the Constitutional Court.
- * The Court shall never learn, but it must remember to enforce Edge Riding limits.
- */
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+
+const DATA_DIR = process.env.DATA_DIR || '/tmp/data';
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'constitutional_ledger.db');
+
+let sharedDb = null;
 
 export class ConstitutionalLedger {
-  constructor() {
-    this.entries = [];
-    this.edgeRidingCounters = {
-      drawdownNearMisses: 0,
-      slippageNearMisses: 0
-    };
+  constructor(symbol = 'GLOBAL') {
+    this.symbol = symbol;
+    
+    if (!sharedDb) {
+      sharedDb = new Database(DB_PATH);
+      sharedDb.pragma('journal_mode = WAL');
+      
+      sharedDb.prepare(`
+        CREATE TABLE IF NOT EXISTS ledger_entries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          symbol TEXT NOT NULL,
+          timestamp INTEGER,
+          request JSON,
+          verdict TEXT,
+          reason TEXT,
+          state JSON,
+          tokenId TEXT
+        )
+      `).run();
+      
+      sharedDb.prepare(`
+        CREATE TABLE IF NOT EXISTS edge_riding_counters (
+          symbol TEXT PRIMARY KEY,
+          drawdownNearMisses INTEGER,
+          slippageNearMisses INTEGER
+        )
+      `).run();
+    }
+    
+    this.db = sharedDb;
+    
+    // Initialize or load counters for this symbol
+    const row = this.db.prepare('SELECT * FROM edge_riding_counters WHERE symbol = ?').get(this.symbol);
+    if (row) {
+      this.edgeRidingCounters = {
+        drawdownNearMisses: row.drawdownNearMisses,
+        slippageNearMisses: row.slippageNearMisses
+      };
+    } else {
+      this.edgeRidingCounters = {
+        drawdownNearMisses: 0,
+        slippageNearMisses: 0
+      };
+      this.db.prepare(
+        'INSERT INTO edge_riding_counters (symbol, drawdownNearMisses, slippageNearMisses) VALUES (?, ?, ?)'
+      ).run(this.symbol, 0, 0);
+    }
   }
 
-  /**
-   * Logs a request and its corresponding PermissionToken verdict.
-   * @param {Object} requestPayload - The raw request from the Execution Layer
-   * @param {Object} token - The signed PermissionToken 
-   * @param {Object} stateSnapshot - The raw system state observed by the Court at that exact moment.
-   */
   appendRecord(requestPayload, token, stateSnapshot) {
-    const record = Object.freeze({
-      timestamp: Date.now(),
-      request: requestPayload,
-      verdict: token.granted ? 'GRANT' : 'VETO',
-      reason: token.reason,
-      state: stateSnapshot,
-      tokenId: token.id
-    });
+    const verdict = token.granted ? 'GRANT' : 'VETO';
+    const reason = token.reason || '';
     
-    this.entries.push(record);
+    this.db.prepare(`
+      INSERT INTO ledger_entries (symbol, timestamp, request, verdict, reason, state, tokenId)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      this.symbol,
+      Date.now(),
+      JSON.stringify(requestPayload),
+      verdict,
+      reason,
+      JSON.stringify(stateSnapshot),
+      token.id
+    );
+    
     this._updateEdgeRidingMetrics(stateSnapshot, token);
   }
 
-  /**
-   * Calculates accumulated near-misses.
-   * @private
-   */
   _updateEdgeRidingMetrics(stateSnapshot, token) {
-    // If the token was a VETO, reset near-misses as the system hit the wall.
     if (!token.granted) {
       this.edgeRidingCounters.drawdownNearMisses = 0;
       this.edgeRidingCounters.slippageNearMisses = 0;
-      return;
-    }
-
-    // Evaluate proximity to HARD limits (e.g. 95% of MAX_DRAWDOWN)
-    // Limits are static and deterministic.
-    const MAX_DRAWDOWN = 0.05; // 5%
-    const EDGE_THRESHOLD = 0.95; // 95% of limit
-
-    if (stateSnapshot.currentDrawdown >= (MAX_DRAWDOWN * EDGE_THRESHOLD)) {
-      this.edgeRidingCounters.drawdownNearMisses++;
     } else {
-      // Decay counter if system recovers
-      this.edgeRidingCounters.drawdownNearMisses = Math.max(0, this.edgeRidingCounters.drawdownNearMisses - 1);
+      const MAX_DRAWDOWN = 0.05;
+      const EDGE_THRESHOLD = 0.95;
+      
+      if (stateSnapshot.currentDrawdown >= (MAX_DRAWDOWN * EDGE_THRESHOLD)) {
+        this.edgeRidingCounters.drawdownNearMisses++;
+      } else {
+        this.edgeRidingCounters.drawdownNearMisses = Math.max(0, this.edgeRidingCounters.drawdownNearMisses - 1);
+      }
     }
+    
+    this.db.prepare(`
+      UPDATE edge_riding_counters 
+      SET drawdownNearMisses = ?, slippageNearMisses = ?
+      WHERE symbol = ?
+    `).run(
+      this.edgeRidingCounters.drawdownNearMisses,
+      this.edgeRidingCounters.slippageNearMisses,
+      this.symbol
+    );
   }
 
-  /**
-   * Returns the current count of near-misses for a specific metric.
-   * @param {string} metric - e.g., 'drawdown'
-   */
   getNearMissCount(metric) {
     return this.edgeRidingCounters[`${metric}NearMisses`] || 0;
   }
   
-  /**
-   * Dumps the ledger for external audit. Cannot be mutated.
-   */
   exportLedger() {
-    return JSON.parse(JSON.stringify(this.entries));
+    const rows = this.db.prepare('SELECT * FROM ledger_entries WHERE symbol = ?').all(this.symbol);
+    return rows.map(r => ({
+      timestamp: r.timestamp,
+      request: JSON.parse(r.request),
+      verdict: r.verdict,
+      reason: r.reason,
+      state: JSON.parse(r.state),
+      tokenId: r.tokenId
+    }));
   }
 }
 
-export const ledger = new ConstitutionalLedger();
+// Keep a default export for backward compatibility with tests
+export const ledger = new ConstitutionalLedger('GLOBAL');

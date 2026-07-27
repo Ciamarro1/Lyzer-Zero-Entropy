@@ -165,48 +165,7 @@ app.post('/api/experiments/update-status', authenticateAdmin, async (req, res) =
   }
 });
 
-import { LyzerArcheologist } from './lyzerArcheologist.js';
 
-const archeologist = new LyzerArcheologist(path.join(__dirname, '../..'));
-
-// GET /api/archeologist/dna — Codebase DNA composition
-app.get('/api/archeologist/dna', async (req, res) => {
-  try {
-    const dna = await archeologist.analyzeCodebaseDNA();
-    res.json(dna);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/archeologist/rankings — Module importance ranking (0-100)
-app.get('/api/archeologist/rankings', (req, res) => {
-  res.json(archeologist.getModuleImportanceRankings());
-});
-
-// GET /api/archeologist/dead-code — Dead code & pruning audit
-app.get('/api/archeologist/dead-code', (req, res) => {
-  res.json(archeologist.detectDeadCodeCandidates());
-});
-
-import { LyzerMindMRI } from './lyzerMindMRI.js';
-
-const lyzerMind = new LyzerMindMRI(path.join(__dirname, '../..'));
-
-// GET /api/mind/mri — Project MRI Report
-app.get('/api/mind/mri', async (req, res) => {
-  try {
-    const mri = await lyzerMind.runFullMRI();
-    res.json(mri);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/archeologist/philosopher-report — Philosopher & CTO Strategic Synthesis Report
-app.get('/api/archeologist/philosopher-report', (req, res) => {
-  res.json(archeologist.generatePhilosopherReport());
-});
 
 // GET /api/experiments/ranking — Historical experiment leaderboard
 app.get('/api/experiments/ranking', async (req, res) => {
@@ -324,32 +283,7 @@ app.get('/api/status', (req, res) => {
   res.json({ status: 'Lyzer Core Backend OK', mode: process.env.ARL_MODE });
 });
 
-app.get('/api/trades/export', (req, res) => {
-  try {
-    const allTrades = engines.flatMap(e => (e.tradeHistory || []).map(t => ({
-      ...t,
-      symbol: e.symbol
-    })));
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename=lyzer_hf_trades_export_${new Date().toISOString().slice(0,10)}.json`);
-    res.json({
-      exportedAt: new Date().toISOString(),
-      totalTrades: allTrades.length,
-      trades: allTrades
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
-app.get('/api/test-telegram', async (req, res) => {
-  try {
-    await sendTelegramAlert('🧪 <b>[LYZER TEST] TESTE DE INTEGRAÇÃO</b>\nSua integração com o Telegram está funcionando perfeitamente!');
-    res.json({ success: true, message: 'Test alert sent to Telegram!' });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
 
 app.get('/api/candles/:symbol', (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
@@ -379,19 +313,7 @@ app.get('/api/candles/:symbol', (req, res) => {
   }
 });
 
-// Since arl is imported, this still references the legacy singleton for extinction routes,
-// which is fine for UI fallback, although true multi-asset extinction should be per engine.
-app.get('/api/extinction/status', (req, res) => {
-  if (arl && arl.extinctionEngine) {
-    res.json({
-      state: arl.extinctionEngine.currentState,
-      stress: arl.extinctionEngine.stressLevel,
-      diversity: arl.extinctionEngine.metricsTracker.getDiversity()
-    });
-  } else {
-    res.json({ state: 'UNKNOWN', stress: 0, diversity: 1 });
-  }
-});
+
 
 let clients = [];
 

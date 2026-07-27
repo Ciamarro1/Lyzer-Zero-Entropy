@@ -43,30 +43,25 @@ A maioria dos algoritmos de negociação falha em produção porque otimizam est
 
 O Lyzer Edge adota uma arquitetura em **3 Processos Isolados (3-Process Topology)** e um **Pipeline Quantitativo em 7 Camadas**, garantindo que falhas de I/O na web não afetem o plano de execução financeira.
 
-### 1. Topologia de 3 Processos Isolados
+### 1. Topologia Monolítica (Node.js)
+
+Historicamente documentado como "3 Processos Isolados", a realidade epistêmica do sistema é um Monólito Node.js onde ingestão, avaliação de sinal, governança e roteamento ocorrem dentro de um único processo para maximizar a coesão.
 
 ```mermaid
 graph TB
-    subgraph P1["Processo 1: Node.js Backend & Dashboard Node"]
+    subgraph P1["Lyzer Edge Monolith (Node.js)"]
         HTTP[Express 5 REST API - Port 7860]
         WS[WebSocket Server / Tick Broadcaster]
-        SE[StreamEngine Instances x6]
+        SE[StreamEngine Instances xN]
         ING[LiveDataIngestor Binance WS]
-    end
-
-    subgraph P2["Processo 2: ECA Court Node (Rust Hub / JS Court)"]
+        
         TK[TruthKernel - LHDS & TRG]
         CCLIST[Continuous CLIST Stress Oracle]
         MOL[Meta-Observation Layer]
         COURT[Constitutional Court - Sovereign Gate]
-        LEDGER[Immutable Event Ledger]
-    end
-
-    subgraph P3["Processo 3: Execution Node (Rust / NATS)"]
-        NATS[NATS JetStream Spine]
-        RG[RiskGateway gRPC Service]
-        IR[Intent Registry DB]
-        OMS[Exchange Execution Gateway]
+        
+        HTTP --- SE
+        WS --- SE
     end
 
     ING -->|Candles 1m..1d| SE
@@ -75,12 +70,9 @@ graph TB
     CCLIST -->|Status| MOL
     MOL -->|EEF & State| COURT
     COURT -->|Permission Token| SE
-    SE -->|Authorize Intent| RG
-    RG -->|Publish Intent Event| NATS
-    NATS -->|Route Order| OMS
-    COURT -->|Append Audit| LEDGER
-    SE -->|UI Overlays| WS
+    SE -->|Execute Order| OMS[Exchange Execution Gateway]
 ```
+
 
 ### 2. Pipeline Quantitativo em 7 Camadas
 
@@ -190,7 +182,7 @@ Todos os comandos devem ser executados a partir do diretório `lyzer edge/`:
 
 ```
 projeto/
-├── .agents/                 # AG Kit, regras (GEMINI.md), memórias e skills (lyzer-guardian)
+├── .agents/                 # AG Kit, regras (GEMINI.md), memórias e skills
 ├── docs/                    # Documentação oficial de auditoria técnica (/docs/audit/)
 ├── knowledge/               # Base de Conhecimento Viva e permanente (/knowledge/)
 ├── packages/
@@ -199,10 +191,7 @@ projeto/
 ├── lyzer edge/              # Aplicação principal (Backend Express + Frontend SPA Vite)
 │   ├── backend/             # StreamEngine.js, server.js, ingestors e executores
 │   ├── src/                 # Interface gráfica SPA, componentes e rotas
-│   ├── src-rust/            # Edge services em Rust (Risk Gateway, Intent Registry, OMS)
 │   └── tests/               # Suíte de testes unitários e E2E SMC
-├── src-rust/                # Kernel Rust (OAL, OCR, SHM Spine, Binance Adapter)
-└── lyzer-workspace/         # Constitutional Hub Rust (Core Hub, Arbitration, Governance)
 ```
 
 ---

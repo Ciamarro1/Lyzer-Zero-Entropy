@@ -31,7 +31,6 @@ import { SpectrogramUI } from "./spectrogramUI.js";
 import { sendTelegramAlert, formatTradeAlert, formatSystemAlert } from "./telegram.js";
 import { recordTickReceived, recordTickDuration, recordCsrlDuration, recordCclistEvaluation, recordEcaEvaluation } from "../src/observability/index.js";
 
-const signalEngine = new EvSignalEngine();
 const trgThreshold = parseFloat(process.env.TRG_THRESHOLD || '0.4');
 const trgExponent = parseFloat(process.env.TRG_EXPONENT || '2');
 const consensusLimit = parseFloat(process.env.RESIDUAL_CONSENSUS_LIMIT || '0.1');
@@ -56,12 +55,12 @@ export class StreamEngine extends EventEmitter {
     this.interval = config.interval || '1m';
     this.disabledProviders = new Set((config.disabledProviders || defaultDisabledProviders).map(p => p.toLowerCase()));
 
-    this.signalEngine = signalEngine;
+    this.signalEngine = new EvSignalEngine();
     this.truthKernel = new TruthKernel({ trgThreshold, trgExponent, consensusLimit, lhdsVetoLimit, ontologicalCollapseTrg });
     
     const activeCclistConfig = config.cclistConfig || cclistConfig;
     const activeMolConfig = config.molConfig || { sclThreshold: molSclThreshold };
-    this.court = config.court || new ConstitutionalCourt(activeCclistConfig, activeMolConfig);
+    this.court = config.court || new ConstitutionalCourt(this.symbol, activeCclistConfig, activeMolConfig);
 
     this.ecoEngine = new EVAlphaResearchEngineV3_3();
     this.extinctionEngine = this.ecoEngine.extinctionEngine;

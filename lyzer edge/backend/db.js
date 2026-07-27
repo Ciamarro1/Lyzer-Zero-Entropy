@@ -1,7 +1,53 @@
-import sqlite3 from 'sqlite3';
+import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { recordSqliteWrite } from '../src/observability/index.js';
+
+class SQLite3Wrapper {
+    constructor(dbPath) {
+        this.db = new Database(dbPath);
+    }
+    serialize(cb) { cb(); }
+    run(sql, params = [], cb) {
+        if (typeof params === 'function') { cb = params; params = []; }
+        try {
+            const info = this.db.prepare(sql).run(params);
+            if (cb) cb.call({ changes: info.changes, lastID: info.lastInsertRowid }, null);
+        } catch (err) { if (cb) cb(err); }
+        return this;
+    }
+    get(sql, params = [], cb) {
+        if (typeof params === 'function') { cb = params; params = []; }
+        try {
+            const row = this.db.prepare(sql).get(params);
+            if (cb) cb(null, row);
+        } catch (err) { if (cb) cb(err); }
+        return this;
+    }
+    all(sql, params = [], cb) {
+        if (typeof params === 'function') { cb = params; params = []; }
+        try {
+            const rows = this.db.prepare(sql).all(params);
+            if (cb) cb(null, rows);
+        } catch (err) { if (cb) cb(err); }
+        return this;
+    }
+    prepare(sql) {
+        const stmt = this.db.prepare(sql);
+        return {
+            run: (...args) => {
+                let cb = args.length > 0 && typeof args[args.length - 1] === 'function' ? args.pop() : null;
+                try {
+                    const info = stmt.run(...args);
+                    if (cb) cb(null);
+                } catch(err) {
+                    if (cb) cb(err);
+                }
+            },
+            finalize: () => {}
+        };
+    }
+}
 
 // Use /tmp/data which is always writable in containerized environments
 const DATA_DIR = process.env.DATA_DIR || '/tmp/data';
@@ -16,13 +62,12 @@ export class CausalMemoryDB {
             return sharedInstance;
         }
         const targetPath = customDbPath || DEFAULT_DB_PATH;
-        this.db = new sqlite3.Database(targetPath, (err) => {
-            if (err) {
-                console.error('[DB] Error opening database:', err);
-            } else {
-                console.log(`[DB] Connected to SQLite Causal Memory Database (${targetPath}).`);
-            }
-        });
+        try {
+            this.db = new SQLite3Wrapper(targetPath);
+            console.log(`[DB] Connected to SQLite Causal Memory Database (${targetPath}) via better-sqlite3.`);
+        } catch (err) {
+            console.error('[DB] Error opening database:', err);
+        }
         this.init();
         if (!customDbPath) {
             sharedInstance = this;
